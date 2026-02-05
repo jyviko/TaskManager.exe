@@ -187,6 +187,7 @@ See `/handoff` for writing breadcrumbs, `/continue` for expanding them.
 | /remember | Persisting learnings to memory/topics |
 | /compact | Memory maintenance, pruning, reorganizing |
 | /complete | Finishing and archiving a task |
+| /merge | Merging worktree code AND agent files back to base |
 | /sync | Syncing .agent-files with origin |
 | /describe | Creating a named checkpoint |
 | /history-search | Searching history for patterns |
