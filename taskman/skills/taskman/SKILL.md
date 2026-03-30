@@ -7,6 +7,8 @@ description: Agent memory and task management CLI. Use this skill when you need 
 
 Version-controlled agent memory and task management. The `.agent-files/` directory is **local scratch space** for agent work that persists across sessions - task tracking, memory, handoffs, notes, or temporary files.
 
+**Context window: 1M tokens.** The system auto-compresses prior messages as limits approach. For single-agent context management use `/compact`. Reserve `/handoff` for inter-agent communication and genuine session boundaries.
+
 ## Architecture
 
 `.agent-files/` is a **standalone [jj](../jj/SKILL.md) git repo**, separate from the project's VCS (add to `.gitignore`). Created by `taskman init`.
@@ -190,17 +192,40 @@ Examples:
 
 See `/handoff` for writing breadcrumbs, `/continue` for expanding them.
 
+## Orchestration: Plan -> Delegate -> Implement
+
+```
+/plan <goal>          Create visible TASK files with dependencies
+     |
+     v
+User reviews/edits    TASK files are plain markdown — user has full control
+     |
+     v
+/delegate <task>      Spawn agents per task (--worktree for parallel isolation)
+     |                Multiple /delegate calls = true parallelism
+     v
+/implement <task>     Each agent implements + runs /simplify for review
+     |
+     v
+/complete <task>      Archive finished work
+```
+
+For simple tasks, skip straight to `/implement`. For complex goals, start with `/plan`.
+
 ## Commands
 
 | Command | Use when |
 |---------|----------|
+| /plan | Decomposing a goal into visible TASK files with dependencies and parallel streams |
+| /delegate | Spawning an agent for a task (--worktree for parallel isolation, --background for async) |
+| /implement | Implementing a single task + /simplify code review |
 | /init | First time setup - creates .agent-files/ in project |
 | /continue | Resuming work from a previous session |
-| /handoff | Saving context mid-task for next session |
+| /handoff | Inter-agent context passing (batch/parallel work) or genuine session boundaries |
 | /remember | Persisting learnings to memory/topics |
-| /compact | Memory maintenance, pruning, reorganizing |
+| /compact | Single-agent memory maintenance, pruning, reorganizing (preferred for context management) |
 | /complete | Finishing and archiving a task |
-| /sync | Checkpoint and advance workspace bookmark |
+| /sync | Checkpoint and advance workspace bookmark (--all to sync across worktrees) |
 | /describe | Creating a named checkpoint |
 | /history-search | Searching history for patterns |
 | /history-diffs | Viewing diffs across revisions |

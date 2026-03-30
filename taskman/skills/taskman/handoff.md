@@ -1,6 +1,19 @@
-Mid-task handoff - save context for your next session.
+Pass context between agents or save state at a genuine session boundary.
 
 Usage: `/handoff <agent-slug> [reason]` (e.g., `/handoff alice EOD`, `/handoff feature-x blocked on review`)
+
+## When to Use
+
+**Inter-agent communication** — the primary use case. When parallel/batch agents need to pass results, status, or context to the orchestrator or to each other (see `/implement` for examples).
+
+**Session boundaries** — when you genuinely cannot continue:
+- User explicitly asks you to stop
+- Blocked on external input (review, deploy, API access)
+- Switching to an entirely different task at user's request
+
+## When NOT to Use
+
+For single-agent context management, use `/compact` instead. You have a 1M token context window and the system auto-compresses prior messages. **Never proactively suggest handoff** — just keep working.
 
 1. Use /remember skill and update memories/topics as applicable
 

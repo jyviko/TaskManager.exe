@@ -1,4 +1,4 @@
-Prune and consolidate memory files, making them more context efficient.
+Prune and consolidate memory files. This is the preferred approach for single-agent context management (use `/handoff` only for inter-agent communication or session boundaries).
 
 Rule of thumb: keep MEDIUMTERM_MEM.md under 500 lines.
 

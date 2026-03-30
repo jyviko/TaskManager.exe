@@ -19,6 +19,12 @@ mcp = _SyncMCP(FastMCP("taskman"))
 
 
 @mcp.tool()
+def tasks() -> str:
+    """List tasks across all worktrees in table format."""
+    return core.tasks()
+
+
+@mcp.tool()
 def describe(reason: str) -> str:
     """Create named checkpoint."""
     return core.describe(reason)

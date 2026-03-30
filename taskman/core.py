@@ -109,12 +109,90 @@ def _current_workspace_name(cwd: Path) -> str:
     return out.strip() or "default"
 
 
-def sync(reason: str) -> str:
+def tasks() -> str:
+    """List tasks across all worktrees in table format.
+
+    Scans .agent-files/tasks/ in the current workspace and all other
+    jj workspaces, displaying task status, priority, and workspace.
+    """
+    cwd = _agent_files_cwd()
+    main_agent_files = _find_main_agent_files()
+
+    # Collect tasks: {slug: {status, priority, updated, workspace}}
+    all_tasks: dict[str, dict] = {}
+
+    def _scan_tasks(agent_dir: Path, workspace_name: str) -> None:
+        tasks_dir = agent_dir / "tasks"
+        if not tasks_dir.is_dir():
+            return
+        for task_file in sorted(tasks_dir.glob("TASK_*.md")):
+            slug = task_file.stem  # TASK_<slug>
+            status = "unknown"
+            priority = "—"
+            updated = "—"
+            depends = "—"
+            try:
+                content = task_file.read_text(encoding="utf-8")
+                for line in content.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("Status:"):
+                        status = stripped.split(":", 1)[1].strip()
+                    elif stripped.startswith("Priority:"):
+                        priority = stripped.split(":", 1)[1].strip()
+                    elif stripped.startswith("Updated:"):
+                        updated = stripped.split(":", 1)[1].strip()
+                    elif stripped.startswith("depends:"):
+                        depends = stripped.split(":", 1)[1].strip()
+            except OSError:
+                pass
+            # Prefer entry from workspace that last updated it
+            existing = all_tasks.get(slug)
+            if existing is None or updated > existing.get("updated", ""):
+                all_tasks[slug] = {
+                    "status": status,
+                    "priority": priority,
+                    "updated": updated,
+                    "depends": depends,
+                    "workspace": workspace_name,
+                }
+
+    # Scan current workspace
+    current_ws = _current_workspace_name(cwd)
+    _scan_tasks(cwd, current_ws)
+
+    # Scan other workspaces
+    jj_wss = _parse_jj_workspaces(main_agent_files)
+    for ws_name, ws_info in jj_wss.items():
+        if ws_name == current_ws:
+            continue
+        ws_path = Path(ws_info["path"])
+        if ws_path.is_dir():
+            _scan_tasks(ws_path, ws_name)
+
+    if not all_tasks:
+        return "No tasks found."
+
+    # Format table
+    header = f"{'Task':<35} {'Status':<12} {'Pri':<4} {'Updated':<12} {'Depends':<20} {'Workspace':<15}"
+    sep = "─" * len(header)
+    lines = [header, sep]
+    for slug in sorted(all_tasks.keys()):
+        t = all_tasks[slug]
+        name = slug.replace("TASK_", "")
+        lines.append(
+            f"{name:<35} {t['status']:<12} {t['priority']:<4} {t['updated']:<12} {t['depends']:<20} {t['workspace']:<15}"
+        )
+
+    return "\n".join(lines)
+
+
+def sync(reason: str, *, sync_all: bool = False) -> str:
     """Sync working copy: describe, update workspace bookmark.
 
     1. jj describe -m "<reason>"
     2. jj bookmark set <workspace> -r @ (move workspace bookmark forward)
     3. jj new (start fresh working copy)
+    4. If sync_all: create merge commits to incorporate other workspace bookmarks
 
     Each workspace has its own bookmark matching its name.
 
@@ -146,6 +224,30 @@ def sync(reason: str) -> str:
             steps.append("bookmark: failed")
 
     run_jj(["new"], cwd)
+
+    # Cross-worktree sync: merge other workspace bookmarks into current
+    if sync_all:
+        main_agent_files = _find_main_agent_files()
+        bookmarks = _parse_jj_bookmarks(main_agent_files)
+        other_bookmarks = sorted(bookmarks - {workspace})
+        if other_bookmarks:
+            for bm in other_bookmarks:
+                try:
+                    # Create a merge commit incorporating the other bookmark
+                    run_jj(["new", "@", bm, "-m", f"sync: merge {bm}"], cwd)
+                    steps.append(f"merged: {bm}")
+                except RuntimeError as e:
+                    if "conflicts" in str(e).lower():
+                        steps.append(f"conflict: {bm} (resolve manually)")
+                    else:
+                        steps.append(f"skip: {bm} ({e})")
+            # Move our bookmark forward to the merged state
+            try:
+                run_jj(["bookmark", "set", workspace, "-r", "@"], cwd)
+            except RuntimeError:
+                pass
+        else:
+            steps.append("sync-all: no other workspaces")
 
     return "\n".join(steps)
 
