@@ -2,22 +2,28 @@ Mid-task handoff - save context for your next session.
 
 Usage: `/handoff <agent-slug> [reason]` (e.g., `/handoff alice EOD`, `/handoff feature-x blocked on review`)
 
-1. Update/create handoffs/HANDOFF_<slug>.md with:
+1. Use /remember skill and update memories/topics as applicable
+
+2. Update/create handoffs/HANDOFF_<slug>.md with:
    - Current focus (what task, what aspect)
    - Summary: current state, key learnings, next steps
    - Breadcrumbs: pointers to recoverable information
    - Blockers (if any)
+   - IMPORTANT: Preserve all user intent from this and previous sessions — goals, preferences, constraints, corrections — and use judgment as to how to frame it. Make sure to phrase it in a way which is preserved across automated handoffs.
 
-2. Update the current task file with:
+3. Update the current task file with:
    - Attempts: what was tried, what failed (approach + outcome only)
    - Notes: **breadcrumbs only** - pointers to recoverable information
    - Budget: update Spent tokens if tracking
 
-3. If you discovered reusable knowledge, save to topics/ (see /remember)
+4. If you discovered reusable knowledge, save to topics/ (see /remember)
 
-4. Run: taskman sync "handoff: <slug> - <reason>"
+5. If there are handoff files that are obsolesced (e.g., the handoff from the beginning of the session that has been superseded by a new handoff that you just created), move them to _archive/ and update in STATUS index
 
-5. Update STATUS.md task index only if task status/priority changed (shared state)
+6. Run: taskman sync "handoff: <slug> - <reason>"
+
+7. Update STATUS.md task index only if task status/priority changed (shared state)
+
 
 ## Handoff File Format
 

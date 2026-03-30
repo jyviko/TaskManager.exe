@@ -63,6 +63,23 @@ def _escape_revset_value(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', "\\\"")
 
 
+def _ensure_jj_gitignored(agent_files: Path) -> None:
+    """Ensure .jj is listed in .agent-files/.gitignore."""
+    gitignore = agent_files / ".gitignore"
+    if gitignore.exists():
+        content = gitignore.read_text()
+        lines = content.splitlines()
+        if ".jj" not in lines and ".jj/" not in lines:
+            # Append .jj to existing gitignore
+            if content and not content.endswith("\n"):
+                content += "\n"
+            content += ".jj\n"
+            gitignore.write_text(content)
+    else:
+        gitignore.write_text(".jj\n")
+
+
+
 def describe(reason: str) -> str:
     """Create named checkpoint.
 
@@ -106,6 +123,9 @@ def sync(reason: str) -> str:
     cwd = _agent_files_cwd()
     steps: list[str] = []
 
+    # Ensure .jj is gitignored (migration for pre-existing repos)
+    _ensure_jj_gitignored(cwd)
+
     run_jj(["describe", "-m", reason], cwd)
     rev = _current_rev_id(cwd)
     steps.append(f"rev: {rev}")
@@ -126,6 +146,7 @@ def sync(reason: str) -> str:
             steps.append("bookmark: failed")
 
     run_jj(["new"], cwd)
+
     return "\n".join(steps)
 
 
@@ -226,6 +247,9 @@ def init() -> str:
     # Set default author for agent commits
     run_jj(["config", "set", "--repo", "user.name", "Agent"], agent_files)
     run_jj(["config", "set", "--repo", "user.email", "agent@localhost"], agent_files)
+
+    # Ensure .jj is in .gitignore so the internal git never tracks jj state
+    _ensure_jj_gitignored(agent_files)
 
     (agent_files / "tasks").mkdir(parents=True, exist_ok=True)
     for filename in ["STATUS.md", "LONGTERM_MEM.md", "MEDIUMTERM_MEM.md"]:
@@ -579,18 +603,23 @@ def wt_rm(name: str, *, force: bool = False) -> str:
             results.append(f"Warning: failed to forget jj workspace: {e}")
 
     # 3. Auto-merge changes into default workspace
+    # IMPORTANT: Use jj new (merge commit), NOT jj squash --from.
+    # squash --from rewrites the ancestor commit shared by all workspaces,
+    # causing conflict cascades through every descendant.
+    # Instead: create a merge commit with both parents → no rewrites.
     if name in jj_bms:
         try:
-            run_jj(["squash", "--from", name, "-m", f"merged wt-{name}"], main_agent_files)
+            # Create a merge commit with both @ (default) and the branch as parents
+            run_jj(["new", "@", name, "-m", f"merged wt-{name}"], main_agent_files)
         except RuntimeError as e:
             results.append(f"Warning: could not auto-merge: {e}")
-            results.append(f"Bookmark '{name}' retained - merge manually: jj squash --from {name}")
+            results.append(f"Bookmark '{name}' retained - merge manually: jj new @ {name} -m 'merge'")
             return "\n".join(results)
         
         # Check for conflicts
         if _has_conflicts("@", main_agent_files):
             raise ValueError(
-                f"MERGE CONFLICTS after squashing '{name}'!\n"
+                f"MERGE CONFLICTS after merging '{name}'!\n"
                 f"\n"
                 f"⚠️  DO NOT use --ours/--theirs blindly - you WILL lose accumulated knowledge.\n"
                 f"\n"
@@ -609,8 +638,19 @@ def wt_rm(name: str, *, force: bool = False) -> str:
                 f"PRINCIPLE: Err on keeping information. Duplicates can be pruned later. Lost knowledge is gone forever."
             )
         
-        # Clean merge - delete bookmark
+        # Clean merge - delete source bookmark, advance default, start fresh
         run_jj(["bookmark", "delete", name], main_agent_files)
+
+        # Advance default workspace bookmark to @ (which now has merged content)
+        workspace = _current_workspace_name(main_agent_files)
+        try:
+            run_jj(["bookmark", "set", workspace, "-r", "@"], main_agent_files)
+        except RuntimeError:
+            pass  # Non-critical - bookmark advances on next sync
+
+        # Start fresh working copy so next edits don't amend the merge commit
+        run_jj(["new"], main_agent_files)
+
         results.append(f"✓ Merged changes from '{name}'")
 
     if not results:
@@ -861,7 +901,12 @@ def install_mcp(agent: str) -> str:
 
 
 def install_skills(agent: str) -> str:
-    """Copy skill files to agent's skills directory."""
+    """Copy skill files to agent's skills directory.
+
+    Note: replaces files within each skill dir (rmtree + copytree), but does NOT
+    remove orphaned skill dirs. If a skill is renamed/deleted, old dirs persist.
+    Add a migrate command if we ever change skill directory names.
+    """
     skills_dir = Path(__file__).resolve().parent / "skills"
     if not skills_dir.is_dir():
         raise FileNotFoundError(f"skills directory not found: {skills_dir}")

@@ -5,7 +5,16 @@ description: Agent memory and task management CLI. Use this skill when you need 
 
 # Taskman
 
-Version-controlled agent memory and task management. The `.agent-files/` directory is **local scratch space** for agent work that persists across sessions - task tracking, memory, handoffs, notes, or temporary files. It is tracked separately from the main repo and should NEVER be referenced from tracked files or commit messages.
+Version-controlled agent memory and task management. The `.agent-files/` directory is **local scratch space** for agent work that persists across sessions - task tracking, memory, handoffs, notes, or temporary files.
+
+## Architecture
+
+`.agent-files/` is a **standalone [jj](../jj/SKILL.md) git repo**, separate from the project's VCS (add to `.gitignore`). Created by `taskman init`.
+
+- **Workspaces**: When the project uses git worktrees, each worktree gets its own jj workspace in the `.agent-files/` repo via `/wt`. Commits are visible across workspaces via `jj log` (no push/pull), but must be merged to combine changes.
+- **Bookmarks**: Each workspace has its own jj bookmark (e.g., `default`, `feature-x`). `/sync` checkpoints the current state and advances the workspace bookmark.
+
+**NEVER reference .agent-files content from tracked files or commit messages.**
 
 ## Structure
 
@@ -24,6 +33,8 @@ Version-controlled agent memory and task management. The `.agent-files/` directo
 ```
 
 **STATUS.md**: Shared operational state - task index, priorities, current focuses, cross-agent blockers. Multi-agent safe.
+
+**Staleness check**: Use the `Updated:` field in task Meta to gauge staleness. Tasks untouched for weeks may need re-evaluation or archival. Note: file mtime is unreliable after jj merges/workspace updates (jj rewrites working copy, resetting mtime).
 
 **handoffs/**: Per-agent handoff files. Use `/continue <slug>` and `/handoff <slug>` with your agent name.
 
@@ -116,6 +127,7 @@ Heuristic: keep flat until 5+ related files, then group.
 Status: planned|in_progress|blocked|complete
 Priority: P0|P1|P2
 Created: YYYY-MM-DD
+Updated: YYYY-MM-DD
 Completed: YYYY-MM-DD
 
 ## Problem
@@ -182,12 +194,13 @@ See `/handoff` for writing breadcrumbs, `/continue` for expanding them.
 
 | Command | Use when |
 |---------|----------|
+| /init | First time setup - creates .agent-files/ in project |
 | /continue | Resuming work from a previous session |
 | /handoff | Saving context mid-task for next session |
 | /remember | Persisting learnings to memory/topics |
 | /compact | Memory maintenance, pruning, reorganizing |
 | /complete | Finishing and archiving a task |
-| /sync | Syncing .agent-files with origin |
+| /sync | Checkpoint and advance workspace bookmark |
 | /describe | Creating a named checkpoint |
 | /history-search | Searching history for patterns |
 | /history-diffs | Viewing diffs across revisions |
@@ -197,16 +210,15 @@ See `/handoff` for writing breadcrumbs, `/continue` for expanding them.
 | /wt-rm | Removing a worktree and cleaning up state |
 | /wt-prune | Cleaning up orphaned worktree state |
 
-When a command is invoked, read the corresponding `.md` file in this skill directory for detailed instructions.
+When a command is invoked, read the corresponding `.md` file in this skill directory for detailed instructions. `/wt-list`, `/wt-rm`, and `/wt-prune` are documented in `wt.md`.
 
 ## jj Snapshotting
 
 jj does NOT auto-snapshot on file changes alone. A jj command must be run to trigger a snapshot. Run `jj st` periodically (after edits or batches of edits) to capture history. Without this, intermediate states are lost.
 
+**Recovery**: jj snapshots repo state on every operation. If an operation goes wrong (botched merge, bad rebase, etc.), changes are **never lost**. Use `jj op log` + `jj op restore OP_ID` to recover. Read the [jj skill](../jj/SKILL.md) before assuming changes are gone.
+
 ## Important
 
-`.agent-files/` is local scratch space, tracked separately from the main repo.
-
-- Add `.agent-files/` to `.gitignore`
 - **NEVER reference .agent-files content from tracked files or commit messages**
 - Treat as untracked local work - may contain session-specific context, internal task names, or scratch notes that don't belong in the project history

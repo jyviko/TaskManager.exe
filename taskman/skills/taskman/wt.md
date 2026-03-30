@@ -1,15 +1,16 @@
 Manage git worktrees with jj workspaces for .agent-files.
 
+`.agent-files/` is a single jj repo (see SKILL.md#Architecture). Each project worktree gets its own jj workspace — a separate working copy of the same repo. Commits are visible across workspaces via `jj log` (no push/pull), but must be merged to combine changes.
+
 ## Create Worktree
+
+**Before running `taskman wt`**, write any planned .agent-files updates (STATUS.md, memory, tasks, handoffs, etc.) first. The new workspace copies the current working directory state — files not yet written to disk won't be present in the child workspace.
 
 Run: `taskman wt $ARGUMENTS`
 
-- No arguments: create .agent-files workspace in current directory (for existing worktrees)
-- `taskman wt <name>`: create worktree + .agent-files workspace for existing branch `<name>`
-- `taskman wt <name> --new`: create worktree + new branch + .agent-files workspace at `worktrees/<name>/`
-
-Workspaces share the same jj repo (like git branches). Each has its own working copy.
-No push/pull needed - commits are immediately visible across workspaces via `jj log`.
+- No arguments: create jj workspace in current directory (for existing worktrees)
+- `taskman wt <name>`: create worktree + jj workspace for existing branch `<name>`
+- `taskman wt <name> --new`: create worktree + new branch + jj workspace at `worktrees/<name>/`
 
 ## List Worktrees
 
@@ -26,15 +27,44 @@ Orphaned = entry exists but path is gone.
 
 Run: `taskman wt-rm <name> [--force]`
 
-Cleans up:
+### Before removing
+
+**Review the worktree's agent files first.** Check for uncommitted knowledge before destroying it:
+
+```bash
+cd worktrees/<name>/.agent-files
+jj st                          # snapshots + shows uncommitted changes
+jj diff                        # what changed vs parent
+jj log                         # commit history
+```
+
+Ingest any valuable context now — you'll need it to merge intelligently after removal (read "Resolving Merge Conflicts" below; load /jj skill + read its conflicts and gotchas subskills).
+
+### What it does
+
 1. Removes git worktree (`git worktree remove`)
 2. Forgets jj workspace (`jj workspace forget`)
-3. **Auto-merges** changes into default workspace
+3. **Auto-merges** changes into default workspace (via merge commit, not squash)
 4. Deletes bookmark on clean merge
 
 **Must run from outside the target worktree.** If in worktree, command errors with exact cd command to run.
 
-Use `--force` for git worktrees with uncommitted files.
+### On `--force`
+
+`--force` discards uncommitted files in the git worktree. **Use with caution** — this can destroy work that hasn't been committed. Before using `--force`:
+
+1. Check for uncommitted changes: `git -C worktrees/<name> status`
+2. If there's valuable uncommitted work, commit or stash it first
+3. Only use `--force` when you've confirmed nothing important will be lost (e.g., the worktree only has build artifacts or generated files)
+
+### After removal
+
+Intelligently merge .agent-files from the removed worktree:
+- Review conflicts (don't blindly `--ours`/`--theirs`)
+- Combine STATUS.md task lists, keep all active tasks
+- Merge memory files (MEDIUMTERM/LONGTERM), dedupe, keep all learnings
+- Preserve all attempt records in TASK_*.md
+- For HANDOFF_*.md, keep newer context but check older for unique info
 
 ## Resolving Merge Conflicts
 
