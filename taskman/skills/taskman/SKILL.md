@@ -1,6 +1,6 @@
 ---
 name: taskman
-description: Agent memory and task management CLI. Use this skill when you need to persist context across sessions, track tasks, hand off work, or store temporary agent scratch data. Provides the `taskman` CLI for init, sync, describe, and history operations.
+description: Agent task planning, orchestration, and memory. Use this skill for task decomposition (/plan), agent delegation (/delegate), implementation (/implement), and persistent context across sessions. Replaces built-in plan mode with visible TASK files. Provides the `taskman` CLI for init, sync, tasks, describe, and history operations.
 ---
 
 # Taskman
